@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>School Concierge</title>
+<meta name="theme-color" content="#2448b8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="School">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gabarito:wght@600;700;800&family=Atkinson+Hyperlegible+Next:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #eef1f6; color: #16213d; font-family: 'Atkinson Hyperlegible Next', system-ui, -apple-system, sans-serif; }
+  @media (prefers-color-scheme: dark) { html, body { background: #0e1424; color: #e6ebf5; } }
+  .boot { padding: 30vh 16px 0; text-align: center; opacity: .7; font-family: Gabarito, system-ui, sans-serif; font-size: 18px; }
+  .setup { max-width: 460px; margin: 0 auto; padding: max(40px, env(safe-area-inset-top)) 20px 40px; }
+  .setup h1 { font-family: Gabarito, system-ui, sans-serif; font-size: 28px; margin: 0 0 8px; }
+  .setup p { line-height: 1.5; }
+  .setup textarea { width: 100%; box-sizing: border-box; min-height: 110px; border-radius: 10px; border: 1px solid #c9d1df; padding: 10px; font: inherit; font-size: 14px; }
+  .setup button { margin-top: 12px; min-height: 48px; width: 100%; border-radius: 12px; border: 0; background: #2448b8; color: #fff; font: inherit; font-weight: 700; font-size: 16px; }
+  .setup .err { color: #c0352b; font-weight: 700; }
+  .update-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(140px + env(safe-area-inset-bottom)); z-index: 80; background: #16213d; color: #fff; border: 0; border-radius: 12px; padding: 12px 16px; font: inherit; font-weight: 700; box-shadow: 0 10px 30px rgba(0,0,0,.3); }
+</style>
+</head>
+<body>
+<div id="app"><div class="boot">Starting School Concierge&#x2026;</div></div>
+<script>
+// School Concierge phone app shell. The app itself (code + styles) comes from your own Google script
+// through your proxy, is kept on this phone, and is updated automatically. This page holds no data.
+window.__bootErrors = [];
+function showBootError() {
+  var el = document.getElementById('app');
+  if (!el || el.getAttribute('data-ready')) return;
+  el.innerHTML = '<div class="setup"><h1>Couldn\'t start</h1><p class="err">' + window.__bootErrors.map(function (m) { return String(m).replace(/[<&]/g, ''); }).join('<br>') +
+    '</p><button onclick="location.reload()">Try again</button><button style="background:#5b6580" onclick="localStorage.removeItem(\'sc-config\');location.reload()">Set up again</button></div>';
+}
+window.addEventListener('error', function (e) {
+  var where = '';
+  if (window.__appCode && /school-concierge-app/.test(e.filename || '')) {
+    var line = window.__appCode.split('\n')[(e.lineno || 1) - 1] || '';
+    where = ' (app line ' + e.lineno + '): ' + line.slice(Math.max(0, (e.colno || 1) - 40), (e.colno || 1) + 40);
+  }
+  window.__bootErrors.push(String(e.message || e) + where);
+  showBootError();
+});
+
+(function () {
+  var CFG = 'sc-config', BUNDLE = 'sc-bundle';
+  function get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function put(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } }
+
+  function decodeSetup(code) {
+    var s = String(code || '').trim().replace(/^.*#setup=/, '');
+    var j = JSON.parse(decodeURIComponent(escape(atob(s.replace(/-/g, '+').replace(/_/g, '/')))));
+    if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(j.a) || !j.k || j.k.length < 32) throw new Error('bad');
+    return { a: j.a, k: j.k };
+  }
+  function setupScreen(msg) {
+    var el = document.getElementById('app');
+    el.innerHTML = '<div class="setup"><h1>School Concierge</h1>' +
+      (msg ? '<p class="err">' + msg.replace(/[<&]/g, '') + '</p>' : '') +
+      '<p>Connect this phone to your app. On your computer, open School Concierge, go to <b>Settings &#x2192; Phone app</b> and copy the <b>setup code</b>. Then paste it here.</p>' +
+      '<textarea id="code" placeholder="Paste the setup code"></textarea><button id="go">Connect</button></div>';
+    document.getElementById('go').onclick = function () {
+      try { put(CFG, JSON.stringify(decodeSetup(document.getElementById('code').value))); location.reload(); }
+      catch (e) { setupScreen('That isn\'t a valid setup code. Copy it again from Settings &#x2192; Phone app.'); }
+    };
+  }
+
+  // A setup link (&#x2026;/#setup=CODE) stores the code and removes it from the address bar.
+  if (/#setup=/.test(location.hash)) {
+    try { put(CFG, JSON.stringify(decodeSetup(location.hash))); } catch (e) { /* fall through to the setup screen */ }
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+  var cfg = null;
+  try { cfg = JSON.parse(get(CFG) || 'null'); } catch (e) { cfg = null; }
+  if (!cfg) { setupScreen(); return; }
+
+  // Talk to the proxy. text/plain keeps it a "simple" request (no CORS preflight, which Google doesn't answer).
+  function call(action, payload) {
+    return fetch(cfg.a, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ key: cfg.k, action: action, payload: payload || '' }) })
+      .then(function (r) {
+        if (!r.ok) throw new Error('The proxy answered ' + r.status + '. Check its deployment (Execute as Me, Who has access: Anyone).');
+        document.body.classList.remove('offline');
+        return r.text();
+      }, function () {
+        document.body.classList.add('offline');
+        throw new Error('No connection.');
+      })
+      .then(function (text) {
+        if (/^\s*</.test(text)) throw new Error('The proxy returned a web page instead of data: redeploy it with Who has access: Anyone, and check the library is added as SchoolConcierge.');
+        try { var j = JSON.parse(text); if (j && j.auth) { localStorage.removeItem(CFG); setTimeout(function () { setupScreen(j.error); }, 0); } } catch (e) { /* api() handles */ }
+        return text;
+      });
+  }
+
+  // The app was written for Google's google.script.run; give it the same shape, backed by call().
+  function runner(ok, fail) {
+    return new Proxy({}, { get: function (_, name) {
+      if (name === 'withSuccessHandler') return function (f) { return runner(f, fail); };
+      if (name === 'withFailureHandler') return function (f) { return runner(ok, f); };
+      return function (action, payload) {
+        call(name === 'api' ? action : name, name === 'api' ? payload : '').then(function (t) { if (ok) ok(t); }, function (e) { if (fail) fail(e); });
+      };
+    } });
+  }
+  window.google = { script: { get run() { return runner(null, null); } } };
+  window.__phoneApp = true;
+
+  // Ask for the first screen's data straight away (the app picks these up).
+  window.__early = {};
+  ['init', 'today'].forEach(function (a) { window.__early[a] = call(a, ''); window.__early[a].catch(function () {}); });
+
+  function start(b) {
+    var st = document.createElement('style'); st.textContent = b.css; document.head.appendChild(st);
+    window.__appCode = b.js;
+    var s = document.createElement('script'); s.text = b.js + '\n//# sourceURL=school-concierge-app.js'; document.body.appendChild(s);
+  }
+  var saved = null;
+  try { saved = JSON.parse(get(BUNDLE) || 'null'); } catch (e) { saved = null; }
+  if (saved && saved.js) start(saved);
+  call('bundle', JSON.stringify({ have: saved ? saved.version : null })).then(function (t) {
+    var r = JSON.parse(t);
+    if (!r.ok) throw new Error(r.error);
+    if (!r.data.js) return; // already up to date
+    put(BUNDLE, JSON.stringify(r.data));
+    if (!saved) { start(r.data); return; }
+    var b = document.createElement('button');
+    b.className = 'update-bar'; b.textContent = 'Updated to v' + r.data.version + ': tap to reload';
+    b.onclick = function () { location.reload(); };
+    document.body.appendChild(b);
+  }).catch(function (e) {
+    if (!saved) { window.__bootErrors.push(e.message); showBootError(); }
+  });
+
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
+})();
+</script>
+</body>
+</html>
